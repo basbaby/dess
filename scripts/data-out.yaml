@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: newwest
+  name: newwest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: newwest
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: newwest
+    spec:
+      containers:
+        - image: 'njcrgnew.azurecr.io/njcrgnew:newwest'
+          name: njcrgnew
+          resources: {}
+      imagePullSecrets:
+        - name: 5f76da42c45b37757c28d840njcrgnew0.48226614915693045
+status: {}

@@ -1,0 +1,1 @@
+kubectl create secret docker-registry ${kubectl_secret_name} --namespace ${kubectl_ns} --docker-server=${azure_container_registry_name}.azurecr.io  --docker-username=${service_principle}  --docker-password=${service_principle_password}

@@ -1,0 +1,1 @@
+az acr show -o json --name ${azure_container_registry_name}

@@ -1,0 +1,36 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
+  MAVEN_OPTS: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+
+steps:
+- task: CacheBeta@0
+  inputs:
+    key: $(Build.SourcesDirectory)/pom.xml
+    path: $(MAVEN_CACHE_FOLDER)
+  displayName: Cache Maven local repo
+- task: Maven@3
+  inputs:
+    mavenPomFile: 'pom.xml'
+    publishJUnitResults: true
+    testResultsFiles: '**/surefire-reports/TEST-*.xml'
+    mavenOptions: '-Xmx3072m'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.8'
+    jdkArchitectureOption: 'x64'
+    goals: 'package $(MAVEN_OPTS)'
+- task: CopyFiles@2
+  inputs:
+    Contents: '**/target/*.jar'
+    TargetFolder: $(Build.ArtifactStagingDirectory)
+    CleanTargetFolder: true
+    flattenFolders: true    
+- task: PublishPipelineArtifact@1
+  inputs:
+    targetPath: $(System.DefaultWorkingDirectory)
+    artifact: 'drop'

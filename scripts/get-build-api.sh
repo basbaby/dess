@@ -1,0 +1,1 @@
+curl --location --request GET "https://dev.azure.com/${orgName}/${projectName}/_apis/build/builds" --header 'Content-Type: application/json' --header "Authorization: Basic ${curlToken}"

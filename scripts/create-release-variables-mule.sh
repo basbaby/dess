@@ -1,0 +1,4 @@
+curl --location --request POST "https://dev.azure.com/${orgName}/${projectName}/_apis/distributedtask/variablegroups?api-version=6.0-preview.2" \
+--header 'Content-Type: application/json' \
+--header "Authorization: Basic ${curlToken}"  \
+--data-raw '{"description":"","name":"release","providerData":null,"type":"Vsts","variables":{"FILENAME":{"isSecret":false,"value":"$(Release.PrimaryArtifactSourceAlias)/drop/target/**.jar"},"PLATFORM":{"isSecret":false,"value":"https://anypoint.mulesoft.com/"},"REGION":{"isSecret":false,"value":"us-east-1"},"RUNTIME":{"isSecret":false,"value":"4.3.0"},"WORKERS":{"isSecret":false,"value":"1"},"WORKER_SIZE":{"isSecret":false,"value":1}},"variableGroupProjectReferences":[{"description":"release","name":"release","projectReference":{"id":"'${projectId}'","name":""}}]}'
