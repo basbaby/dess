@@ -8,11 +8,11 @@ var releaseDef = {
     "modifiedOn": "0001-01-01T00:00:00",
     "isDeleted": false,
     "variables": {},
-    "variableGroups": ['${releaseVariableId}'],
+    "variableGroups": [],
     "environments": [],
     "artifacts": [
         {
-            "alias": "_'${projectName}' Pipeline",
+            "alias": "",
             "definitionReference": {
                 "defaultVersionBranch": {
                     "id": "", "name": ""
@@ -27,14 +27,14 @@ var releaseDef = {
                     "name": "Latest"
                 }, "definition": {
                     "id": "'${buildDefId}'",
-                    "name": "'${projectName}' Pipeline"
+                    "name": ""
                 }, "definitions": {
                     "id": "", "name": ""
                 }, "IsMultiDefinitionType": {
                     "id": "False", "name": "False"
                 }, "project": {
-                    "id": "'${projectId}'",
-                    "name": "'${projectName}'"
+                    "id": "",
+                    "name": ""
                 }, "repository": {
                     "id": "",
                     "name": ""
@@ -42,14 +42,14 @@ var releaseDef = {
             },
             "isPrimary": true,
             "isRetained": false,
-            "sourceId": "'${projectId}':'${buildId}'",
+            "sourceId": "",
             "type": "Build"
 
         }
     ],
     "triggers": [
         {
-            "artifactAlias": "_'${projectName}' Pipeline",
+            "artifactAlias": "",
             "triggerConditions": null,
             "triggerType": 1
         }
@@ -58,7 +58,7 @@ var releaseDef = {
     "tags": [],
     "properties": {},
     "id": 0,
-    "name": "'${projectName}' Release",
+    "name": "",
     "projectReference": null,
     "_links": {}
 }

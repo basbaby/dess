@@ -42,6 +42,7 @@
     cd ..
     cd ..
     rm -rf apiops-project-template
+    rm -rf apiops-devops-automation-framework
         # if [ "$new" = "-n" ]
         # then
         #     mkdir $repo

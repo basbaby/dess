@@ -28,8 +28,10 @@
     elif [ "$projectType" = "mule" ]
     then
         echo mule
-        cd $projectArchetype
-        cp /deployment/config/mule/azure-pipelines.yml .
+        cd apiops-devops-automation-framework
+        cd "$projectArchetype"
+        newBase="$(cd ../../; pwd)" 
+        cp $newBase/deployment/azure-pipelines.yml .
     elif [ "$projectType" = "react" ]
     then
         echo react

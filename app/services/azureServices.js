@@ -24,6 +24,8 @@ let acrConfig = require('../models/acr-model');
 let pipelinePermission = require('../models/pipeline-permission-model');
 let pipelineVarModel = require('../models/pipeline-variable-model');
 const pipelineVariable = require('../models/pipeline-variable-model');
+let releaseDef = require('../models/release.def.model');
+let releaseEnv = require('../models/release.env.model');
 
 let headers = {
     'Content-Type': 'application/json',
@@ -79,11 +81,11 @@ exports.azureApiGetFunction = async function (url, env) {
         return err;
     }
 }
-exports.azureApiUploadFunction = async function (env) {
+exports.azureApiUploadFunction = async function (env, filename) {
     try {
         headers["Authorization"] = "Basic " + env.azureToken;
         headers["Content-Type"] = "application/octet-stream";
-        const resp = await axios({ method: 'POST', url: "https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/securefiles?api-version=5.0-preview.1&name=credentials", headers: headers });
+        const resp = await axios({ method: 'POST', url: "https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/securefiles?api-version=5.0-preview.1&name=" + filename, headers: headers });
         return resp.data;
     } catch (e) {
         console.error(e)
@@ -258,6 +260,8 @@ exports.startBuildProject = async function (userId, req) {
         let projectDetails = await projectService.getProject(userId, req);
         let resources = await this.getAzureResources(userId, req);
         let gitRes = await gitService.retrieveGitRepo(userId, req);
+        console.log("Projetct Details")
+        console.log(projectDetails[0]);
         env = { ...gitRes[0], ...resources[0], ...projectDetails.projects[0] };
         env.cloneOrCreate = "";
         env.projectDescription = "FirstProject";
@@ -311,6 +315,10 @@ exports.startBuildProject = async function (userId, req) {
         let createBuldVar = await execShellCommand(scriptPath + "create-build-variables.sh", env);
         console.log("Calling build pipeline");
         global.io.emit('buildupdate', { message: 'Azure Devops: Creating Build pipeline', date: moment().format('LLLL'), status: 'done' });
+        if (env.projectType === 'mule') {
+            await execShellCommand(scriptPath + "create-mule-settings.sh", env);
+            await this.azureApiUploadFunction(env, 'settings.xml');
+        }
         let buildPipe = await execShellCommand(scriptPath + "build-pipeline.sh", env);
         global.io.emit('buildupdate', { message: buildPipe, date: moment().format('LLLL'), status: 'console' });
         let buildRes = await this.parseJson(buildPipe);
@@ -331,6 +339,7 @@ exports.startBuildProject = async function (userId, req) {
 }
 exports.createMuleRelease = async (userId, req) => {
     try {
+
         let azureResource = await this.getAzureResources(userId, req);
         let projectResources = await projectService.getProject(userId, req);
         env = { ...azureResource[0] };
@@ -366,7 +375,7 @@ exports.createMuleRelease = async (userId, req) => {
             });
         }
         delay(3000);
-        let variabGroupJson = await await this.azureApiGetFunction("https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/variablegroups?api-version=6.0-preview.2", env);
+        let variabGroupJson = await this.azureApiGetFunction("https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/variablegroups?api-version=6.0-preview.2", env);
         // var variabGroupJson = await this.parseJson(varGroup);
         variabGroupJson.value.forEach(element => {
             if (element.name == 'release') {
@@ -381,13 +390,21 @@ exports.createMuleRelease = async (userId, req) => {
         });
         let muleCred = await execShellCommand(scriptPath + "create-mule-cred.sh", env);
         // let uploadCred = await execShellCommand(scriptPath + "az-upload-credentials.sh", env);
-        let uploadCred = await this.azureApiUploadFunction(env);
+        let uploadCred = await this.azureApiUploadFunction(env, 'credentials');
         env.muleSecureFileId = await uploadCred.id;
         console.log(env)
         delay(3000);
-        let releaseDef = await execShellCommand(scriptPath + "create-release-def.sh", env);
-        var releaseJson = await this.parseJson(releaseDef);
-        env.releaseDefId = releaseJson.id;
+        // let sandboxEnv = new releaseEnv();
+        console.log(releaseEnv);
+        releaseEnv.deployPhases[0].deploymentInput.queueId = env.queueId;
+        releaseEnv.deployPhases[0].workflowTasks[0].inputs.secureFile = env.muleSecureFileId;
+        // let releaseDefJson = new releaseDef();
+        releaseDef.environments.push(releaseEnv);
+        console.log(releaseDef);
+        let releaseResJson = await this.azureApiPostFunction("https://vsrm.dev.azure.com/" + env.orgName + "/" + env.projectName + "_apis/release/definitions?api-version=6.1-preview.4", env, releaseDef);
+        // let releaseDef = await execShellCommand(scriptPath + "create-release-def.sh", env);
+        // var releaseJson = await this.parseJson(releaseDef);
+        env.releaseDefId = releaseResJson.id;
         global.io.emit('releaseupdate', { message: 'Creating release', date: moment().format('LLLL'), status: 'progress' });
         let createrelease = await execShellCommand(scriptPath + "create-release.sh", env);
     } catch (e) {

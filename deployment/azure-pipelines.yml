@@ -1,14 +1,22 @@
 trigger:
-- master
-
+  branches:
+    include:
+      - '*'
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
-  MAVEN_OPTS: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+- name: MAVEN_CACHE_FOLDER
+  value: $(Pipeline.Workspace)/.m2/repository
+- name: MAVEN_OPTS
+  value: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)  -s $(muleSettingsFile.secureFilePath) -e '
 
 steps:
+- task: DownloadSecureFile@1
+  name: muleSettingsFile
+  displayName: 'Download Mulesoft Settings'
+  inputs:
+    secureFile: 'settings.xml'
 - task: CacheBeta@0
   inputs:
     key: $(Build.SourcesDirectory)/pom.xml

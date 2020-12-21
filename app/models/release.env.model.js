@@ -1,7 +1,7 @@
 var releaseEnv =
 {
     "id": 0,
-    "name": "",
+    "name": "Sandbox",
     "variables": {},
     "rank": 1,
     "variableGroups": [],
@@ -39,7 +39,7 @@ var releaseEnv =
                 "artifactsDownloadInput": {
                     "downloadInputs": []
                 },
-                "queueId": '${queueId}',
+                "queueId": '',
                 "demands": [],
                 "enableAccessToken": false,
                 "timeoutInMinutes": 0,
@@ -66,7 +66,7 @@ var releaseEnv =
                     "overrideInputs": {},
                     "condition": "succeeded()",
                     "inputs": {
-                        "secureFile": "'${muleSecureFileId}'",
+                        "secureFile": "",
                         "retryCount": "5"
                     }
                 },
@@ -139,3 +139,4 @@ var releaseEnv =
     },
     "environmentTriggers": []
 }
+module.exports = releaseEnv;

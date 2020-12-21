@@ -20,9 +20,10 @@
     ### github logic branch
     ### authentication via PAT
     rm -rf apiops-project-template
+    rm -rf apiops-devops-automation-framework
     if [ "$projectType" = "mule" ]
     then
-        git clone https://basbaby:c0d4189d3aa80479a5d46b0edd42aecc3dda7640@github.com/njclabs/apiops-devops-automation-framework.git
+        git clone https://basbaby:0ea2cae174502ed1efca9cdadda3ba516db452ef@github.com/njclabs/apiops-devops-automation-framework.git
     else
         git clone https://basbaby:c0d4189d3aa80479a5d46b0edd42aecc3dda7640@github.com/njclabs/apiops-project-template.git
     fi    
