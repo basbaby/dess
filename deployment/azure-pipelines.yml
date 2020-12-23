@@ -9,7 +9,7 @@ variables:
 - name: MAVEN_CACHE_FOLDER
   value: $(Pipeline.Workspace)/.m2/repository
 - name: MAVEN_OPTS
-  value: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)  -s $(muleSettingsFile.secureFilePath) -e '
+  value: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)  -s $(muleSettingsFile.secureFilePath)  '
 
 steps:
 - task: DownloadSecureFile@1

@@ -22,8 +22,6 @@ execShellCommand = async (cmd, env) => {
 exports.retrieveGitRepo = async (userId, req) => {
     try {
         const resp = await dbService.dbGet("/api/db/v1/repo", userId, req.headers["x-access-token"]);
-        console.log('Inside git service');
-        console.log(resp.gitRepo[0]);
         return resp.gitRepo;
     } catch (err) {
         // Handle Error Here

@@ -13,6 +13,7 @@ const { setTimeout } = require("timers");
 let dbService = require("../services/dbService");
 let projectService = require("../services/projectServices");
 let gitService = require("../services/gitService");
+let jenkinsService = require("../services/jenkinsService");
 const axios = require('axios')
 // let scriptPath = "apiops-ms-azure-node/scripts/"
 var rootFolder = __dirname.split('/').pop();
@@ -59,9 +60,24 @@ exports.azureApiPostFunction = async function (url, env, obj) {
         return err;
     }
 }
+exports.gitWebHookApi = async function (env) {
+    try {
+        headers["Authorization"] = "token " + env.gitPat;
+        headers["Accept"] = "application/vnd.github.v3+json";
+        var obj = { "config": { "url": env.jenkinsServer + "/github-webhook/", "content_type": "application/json", "secret": "", "insecure_ssl": "", "token": "", "digest": "" } }
+        console.log(obj);
+        const resp = await axios({ method: 'POST', url: "https://api.github.com/repos/" + env.gitUsername + "/" + env.projectName + "/hooks ", headers: headers, data: obj });
+        return resp.data;
+    } catch (err) {
+        // Handle Error Here
+        console.error(err);
+        return err;
+    }
+}
 exports.azureApiPatchFunction = async function (url, env, obj) {
     try {
         headers["Authorization"] = "Basic " + env.azureToken;
+        headers["Content-Type"] = "application/json"
         const resp = await axios({ method: 'PATCH', url: url, headers: headers, data: obj });
         return resp.data;
     } catch (err) {
@@ -81,11 +97,11 @@ exports.azureApiGetFunction = async function (url, env) {
         return err;
     }
 }
-exports.azureApiUploadFunction = async function (env, filename) {
+exports.azureApiUploadFunction = async function (env, filename, file) {
     try {
         headers["Authorization"] = "Basic " + env.azureToken;
         headers["Content-Type"] = "application/octet-stream";
-        const resp = await axios({ method: 'POST', url: "https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/securefiles?api-version=5.0-preview.1&name=" + filename, headers: headers });
+        const resp = await axios({ method: 'POST', url: "https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/distributedtask/securefiles?api-version=5.0-preview.1&name=" + filename, headers: headers, data: file });
         return resp.data;
     } catch (e) {
         console.error(e)
@@ -254,15 +270,89 @@ exports.deleteProjectBuild = async function (userId, req) {
         throw Error('No build found');
     }
 }
+exports.createAzureBuild = async function (env) {
+    var azLogin = await execShellCommand(scriptPath + "az-login.sh", env);
+    global.io.emit('buildupdate', { message: azLogin, date: moment().format('LLLL'), status: 'console' });
+    var azAccount = await execShellCommand(scriptPath + "account-show.sh", env);
+    var accountInfo = await this.parseJson(azLogin);
+    env.subscriptionId = accountInfo[0].id;
+    env.tenantId = accountInfo[0].tenantId;
+    env.subscriptionName = accountInfo[0].name;
+    let acrResult = await execShellCommand(scriptPath + "get-acr-id.sh", env);
+    var gacridObj = await this.parseJson(acrResult);
+    env.acr_id = gacridObj.id;
+    env.acr_server = gacridObj.loginServer;
+    env.acr_name = gacridObj.name;
+    global.io.emit('buildupdate', { message: 'Azure Devops: Creating Project', date: moment().format('LLLL'), status: 'done' });
+    let devopRes = await execShellCommand(scriptPath + "az-devops-create.sh", env);
+    let devopsObj = await this.parseJson(devopRes);
+    env.projectId = devopsObj.id;
 
+    console.log(env);
+
+    let gitRepo = await execShellCommand(scriptPath + "git-repo-create.sh", env);
+    global.io.emit('buildupdate', { message: 'Git Repository created', date: moment().format('LLLL'), status: 'done' });
+
+
+    let gitPullPush = await execShellCommand(scriptPath + "git-pull-push.sh", env);
+    let gitSVCRes = await execShellCommand(scriptPath + "git-service-connection.sh", env);
+    var gitscObject = await this.parseJson(gitSVCRes);
+    env.github_service_connection_id = gitscObject.id;
+    console.log(env.github_service_connection_id);
+    await this.azureScAllowAll(env.github_service_connection_id, env);
+    // let azSVCRes = await execShellCommand(scriptPath + "acr-service-connection.sh", env);
+    let azSVCRes = await this.azureAcrServiceConn(env);
+    console.log("Response from devops");
+    console.log(azSVCRes);
+    env.acr_service_id = azSVCRes.id;
+    await delay(20000);
+    await this.azureScAllowAll(env.acr_service_id, env);
+    let createBuldVar = await execShellCommand(scriptPath + "create-build-variables.sh", env);
+    console.log("Calling build pipeline");
+    global.io.emit('buildupdate', { message: 'Azure Devops: Creating Build pipeline', date: moment().format('LLLL'), status: 'done' });
+    if (env.projectType === 'mule') {
+        // await execShellCommand(scriptPath + "create-mule-settings.sh", env);
+        const xmlFile = fs.readFileSync("settings.xml");
+        let settingUpload = await this.azureApiUploadFunction(env, "settings.xml", xmlFile);
+        console.log(settingUpload);
+        var settingFilePermission = [{ "authorized": true, "id": settingUpload.id, "name": "settings.xml", "type": "securefile" }];
+        console.log(settingFilePermission);
+        await this.azureApiPatchFunction("https://dev.azure.com/" + env.orgName + "/" + env.projectName + "/_apis/build/authorizedresources?api-version=5.1-preview.1", env, settingFilePermission);
+    }
+    let buildPipe = await execShellCommand(scriptPath + "build-pipeline.sh", env);
+    global.io.emit('buildupdate', { message: buildPipe, date: moment().format('LLLL'), status: 'console' });
+    let buildRes = await this.parseJson(buildPipe);
+    let resObj = {
+        buildId: buildRes.id,
+        buildName: buildRes.definition.name,
+        projectName: projectDetails.projects[0].projectName,
+        projectId: projectDetails.projects[0]._id
+    }
+    let buildUpdate = await dbService.dbPost("/api/db/v1/azprojectbuild", userId, resObj, req.headers["x-access-token"]);
+    this.checkBuildStatus(env, buildRes.id);
+    return buildUpdate;
+}
+
+exports.createJenkinsBuild = async function (env) {
+    let jenkinsConfig = await execShellCommand(scriptPath + "create-jenkins-config.sh", env);
+    console.log(env);
+    // let gitWebHook = await execShellCommand(scriptPath + "git-webhook.sh", env);
+    let webhook = await this.gitWebHookApi(env);
+    console.log(webhook);
+    let jenkinsBuild = await execShellCommand(scriptPath + "create-jenkins-pipeline.sh", env);
+    return jenkinsBuild;
+}
 exports.startBuildProject = async function (userId, req) {
     try {
+        let retBuildObj = null;
         let projectDetails = await projectService.getProject(userId, req);
         let resources = await this.getAzureResources(userId, req);
         let gitRes = await gitService.retrieveGitRepo(userId, req);
-        console.log("Projetct Details")
-        console.log(projectDetails[0]);
-        env = { ...gitRes[0], ...resources[0], ...projectDetails.projects[0] };
+        let jenkinsRes = await jenkinsService.getJenkinsSettings(userId, req);
+
+        env = { ...gitRes[0], ...resources[0], ...projectDetails.projects[0], ...jenkinsRes[0] };
+        let gitExecute = await execShellCommand(scriptPath + "git-process.sh", env);
+        env.azureToken = await Buffer.from(resources[0].azpusername + ":" + resources[0].azDevopsPat, "utf8").toString("base64");
         env.cloneOrCreate = "";
         env.projectDescription = "FirstProject";
         env.pipeline_description = "Automated Build  Pipeline for Project: " + projectDetails.projects[0].projectName;
@@ -276,61 +366,26 @@ exports.startBuildProject = async function (userId, req) {
         env.anypointPassword = "Mule123";
         env.gitType = req.body.gitType;
         env.orgName = resources[0].organization.split("/dev.azure.com/")[1];
-        env.github_repo_url = 'https://github.com/' + gitRes[0].gitUsername + '/' + projectDetails.projects[0].projectName;
-        var azLogin = await execShellCommand(scriptPath + "az-login.sh", env);
-        global.io.emit('buildupdate', { message: azLogin, date: moment().format('LLLL'), status: 'console' });
-        var azAccount = await execShellCommand(scriptPath + "account-show.sh", env);
-        var accountInfo = await this.parseJson(azLogin);
-        env.subscriptionId = accountInfo[0].id;
-        env.tenantId = accountInfo[0].tenantId;
-        env.subscriptionName = accountInfo[0].name;
-        let acrResult = await execShellCommand(scriptPath + "get-acr-id.sh", env);
-        var gacridObj = await this.parseJson(acrResult);
-        env.acr_id = gacridObj.id;
-        env.acr_server = gacridObj.loginServer;
-        env.acr_name = gacridObj.name;
-        global.io.emit('buildupdate', { message: 'Azure Devops: Creating Project', date: moment().format('LLLL'), status: 'done' });
-        let devopRes = await execShellCommand(scriptPath + "az-devops-create.sh", env);
-        let devopsObj = await this.parseJson(devopRes);
-        env.projectId = devopsObj.id;
+        env.github_repo_url = 'https://github.com/' + gitRes[0].gitUsername + '/' + projectDetails.projects[0].projectName + '/';
         env.azureToken = await Buffer.from(resources[0].azpusername + ":" + resources[0].azDevopsPat, "utf8").toString("base64");
-        console.log(env);
-        global.io.emit('buildupdate', { message: devopRes, date: moment().format('LLLL'), status: 'console' });
-        let gitRepo = await execShellCommand(scriptPath + "git-repo-create.sh", env);
-        global.io.emit('buildupdate', { message: 'Git Repository created', date: moment().format('LLLL'), status: 'done' });
-        let gitExecute = await execShellCommand(scriptPath + "git-process.sh", env);
-        let gitPullPush = await execShellCommand(scriptPath + "git-pull-push.sh", env);
-        let gitSVCRes = await execShellCommand(scriptPath + "git-service-connection.sh", env);
-        var gitscObject = await this.parseJson(gitSVCRes);
-        env.github_service_connection_id = gitscObject.id;
-        console.log(env.github_service_connection_id);
-        await this.azureScAllowAll(env.github_service_connection_id, env);
-        // let azSVCRes = await execShellCommand(scriptPath + "acr-service-connection.sh", env);
-        let azSVCRes = await this.azureAcrServiceConn(env);
-        console.log("Response from devops");
-        console.log(azSVCRes);
-        env.acr_service_id = azSVCRes.id;
-        await delay(20000);
-        await this.azureScAllowAll(env.acr_service_id, env);
-        let createBuldVar = await execShellCommand(scriptPath + "create-build-variables.sh", env);
-        console.log("Calling build pipeline");
-        global.io.emit('buildupdate', { message: 'Azure Devops: Creating Build pipeline', date: moment().format('LLLL'), status: 'done' });
-        if (env.projectType === 'mule') {
-            await execShellCommand(scriptPath + "create-mule-settings.sh", env);
-            await this.azureApiUploadFunction(env, 'settings.xml');
+
+        console.log("before condition")
+        if (env.cloudType === 'azure') {
+            retBuildObj = await this.createAzureBuild(env);
+        } else if (env.cloudType === 'jenkins') {
+            console.log("inside jenkins")
+            let gitRepo = await execShellCommand(scriptPath + "git-repo-create.sh", env);
+            global.io.emit('buildupdate', { message: 'Git Repository created', date: moment().format('LLLL'), status: 'done' });
+
+
+            let gitPullPush = await execShellCommand(scriptPath + "git-pull-push.sh", env);
+            retBuildObj = await this.createJenkinsBuild(env);
         }
-        let buildPipe = await execShellCommand(scriptPath + "build-pipeline.sh", env);
-        global.io.emit('buildupdate', { message: buildPipe, date: moment().format('LLLL'), status: 'console' });
-        let buildRes = await this.parseJson(buildPipe);
-        let resObj = {
-            buildId: buildRes.id,
-            buildName: buildRes.definition.name,
-            projectName: projectDetails.projects[0].projectName,
-            projectId: projectDetails.projects[0]._id
-        }
-        let buildUpdate = await dbService.dbPost("/api/db/v1/azprojectbuild", userId, resObj, req.headers["x-access-token"]);
-        this.checkBuildStatus(env, buildRes.id);
-        return buildUpdate;
+
+        return retBuildObj;
+
+
+
     } catch (e) {
         console.log(e);
         throw Error('Could not start Build' + e);
@@ -390,7 +445,8 @@ exports.createMuleRelease = async (userId, req) => {
         });
         let muleCred = await execShellCommand(scriptPath + "create-mule-cred.sh", env);
         // let uploadCred = await execShellCommand(scriptPath + "az-upload-credentials.sh", env);
-        let uploadCred = await this.azureApiUploadFunction(env, 'credentials');
+        const credentials = fs.readFileSync("credentials")
+        let uploadCred = await this.azureApiUploadFunction(env, "credentials", credentials);
         env.muleSecureFileId = await uploadCred.id;
         console.log(env)
         delay(3000);
